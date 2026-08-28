@@ -548,8 +548,8 @@ def _read_tdms(fname, headonly=False, file_format='auto', chmin=None,
     https://nptdms.readthedocs.io/en/stable/quickstart.html.
     """
     with TdmsFile.read(fname) as tdms_file:
+        group_name = [group.name for group in tdms_file.groups()]
         if file_format == 'auto':
-            group_name = [group.name for group in tdms_file.groups()]
             if group_name == ['Measurement']:
                 key = 'Measurement'
                 properties = tdms_file.properties
@@ -564,14 +564,76 @@ def _read_tdms(fname, headonly=False, file_format='auto', chmin=None,
                 key = 'DAS'
                 properties = tdms_file[key].properties
                 file_format = 'Institute of Semiconductors, CAS'
+            elif group_name == ['Data']:
+                key = 'Data'
+                properties = tdms_file.properties
+                channel_names = [channel.name for channel in
+                                 tdms_file[key].channels()]
+                ovlink_properties = {
+                    'Sampling Frequency (Hz)', 'Spatial Resolution (m)',
+                    'Sensor Number', 'Year', 'Month', 'Day', 'Hour', 'Minute',
+                    'Second'}
+                if ovlink_properties.issubset(properties) and channel_names and \
+                    all(name.startswith('Channel') and name[7:].isdigit()
+                        for name in channel_names):
+                    file_format = 'Wuhan Optical Valley Interlink (Ovlink)'
+                else:
+                    file_format = 'Unknown'
             else:
                 key = group_name[0]
+                properties = tdms_file.properties
                 file_format = 'Unknown'
         else:
             file_format = _device_standardized_name(file_format)
+            if file_format == 'Wuhan Optical Valley Interlink (Ovlink)':
+                key = 'Data'
+                properties = tdms_file.properties
+            elif file_format == 'Institute of Semiconductors, CAS':
+                key = 'DAS'
+                properties = tdms_file[key].properties
+            elif file_format.startswith('Silixa iDAS'):
+                key = 'Measurement'
+                properties = tdms_file.properties
+            else:
+                key = group_name[0]
+                properties = tdms_file.properties
 
-        if file_format in ['Silixa iDAS', 'Silixa iDAS-v2', 'Silixa iDAS-v3',
-                           'Unknown']:
+        if file_format == 'Wuhan Optical Valley Interlink (Ovlink)':
+            channel_info = sorted(
+                (int(channel.name[7:]), channel.name)
+                for channel in tdms_file[key].channels())
+            start_channel = channel_info[0][0]
+            shape = (len(channel_info),
+                     len(tdms_file[key][channel_info[0][1]]))
+            start_time = DASDateTime(
+                int(properties['Year']), int(properties['Month']),
+                int(properties['Day']), int(properties['Hour']),
+                int(properties['Minute']), tzinfo=utc
+                ) + float(properties['Second'])
+            metadata = {
+                'dx': float(properties['Spatial Resolution (m)']),
+                'fs': float(properties['Sampling Frequency (Hz)']),
+                'start_channel': start_channel,
+                'start_distance': float(properties.get(
+                    'Start Distance (m)', 0)),
+                'start_time': start_time,
+                'headers': {**properties}}
+            if 'Gauge length' in properties:
+                metadata['gauge_length'] = float(properties['Gauge length'])
+
+            si, sj, metadata = _trimming_slice_metadata(
+                shape, metadata=metadata, chmin=chmin, chmax=chmax, dch=dch,
+                xmin=xmin, xmax=xmax, tmin=tmin, tmax=tmax, spmin=spmin,
+                spmax=spmax)
+            if headonly:
+                data = np.zeros(shape,
+                    dtype=tdms_file[key][channel_info[0][1]].dtype)[si, sj]
+            else:
+                data = np.asarray([
+                    tdms_file[key][channel_info[ch][1]][sj]
+                    for ch in range(si.start, si.stop, si.step)])
+        elif file_format in ['Silixa iDAS', 'Silixa iDAS-v2',
+                             'Silixa iDAS-v3', 'Unknown']:
             start_channel = min([int(channel.name) for channel in
                                  tdms_file[key].channels()])
             shape = (len(tdms_file[key]),

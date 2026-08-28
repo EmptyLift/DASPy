@@ -24,6 +24,9 @@ def _device_standardized_name(file_format: str) -> str:
         'Puniu Tech HiFi-DAS': ['puniutechhifidas', 'puniu', 'puniutech',
                                 'hifidas',
                                 'puniuhifidas', 'puniudas'],
+        'Wuhan Optical Valley Interlink (Ovlink)': [
+            'wuhanopticalvalleyinterlink',
+            'wuhanopticalvalleyinterlinkovlink', 'ovlink', 'whovlink'],
         'Silixa iDAS': ['silixaidas', 'silixaidasv1', 'idasv1', 'idas'],
         'Silixa iDAS-v2': ['silixaidasv2', 'idasv2'],
         'Silixa iDAS-v3': ['silixaidasv3', 'idasv3'],
